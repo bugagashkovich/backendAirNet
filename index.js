@@ -6,7 +6,7 @@ const host = "localhost";
 const port = 4000;
 
 // Создаем базу данных или открываем существующую с проверкой наличия необходимых таблиц
-const db = new sqlite3.Database(":memory:", (error) => {
+const db = new sqlite3.Database("db", (error) => {
   error ? console.log(error) : null;
 });
 
@@ -23,6 +23,15 @@ db.run(
 
 const requestListener = function (req, res) {
   res.setHeader("Content-Type", "application/json");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "DELETE, POST, GET, PUT, OPTIONS"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
   //   Обработчик URL
   //   Проверим наличие параметров, отделим их и приведем к объекту
   //   Отделяем URL от параметров
@@ -41,13 +50,17 @@ const requestListener = function (req, res) {
   } else {
     params = null;
   }
-
   switch (url) {
     // CRUD TODO
     case "/todo":
       if (params) {
-        // Для получения задач по одному пользователю (можно поменять на проекты)
+        // Для одной задачи
         switch (req.method) {
+          case "OPTIONS":
+            console.log("1");
+            res.writeHead(200);
+            res.end(JSON.stringify("Продолжай"));
+            break;
           case "GET":
             db.get(
               "SELECT rowid as id, name, description, date, state, owner FROM todo WHERE rowid=$id",
@@ -182,36 +195,100 @@ const requestListener = function (req, res) {
       }
       break;
 
-    //   Пометить задачу как выполненную
-    case "/do":
+    // Получить все задачи
+    case "/todos":
       if (params) {
-        if (req.method == "PUT") {
-          db.get(
-            "UPDATE todo SET state=$state WHERE rowid=$id RETURNING rowid as id, name, description, state, date, owner",
-            { $id: params.id, $state: 1 },
+        // Для всех задач пользователя
+        switch (req.method) {
+          case "GET":
+            db.all(
+              "SELECT rowid as id, name, description, date, state, owner FROM todo WHERE owner=$id",
+              { $id: params.id },
+              (err, row) => {
+                if (err) {
+                  console.log(err);
+                  res.writeHead(400);
+                  res.end(JSON.stringify(err));
+                } else {
+                  if (row) {
+                    res.writeHead(200);
+                    res.end(JSON.stringify(row));
+                  } else {
+                    res.writeHead(404);
+                    res.end(
+                      JSON.stringify("По Вашему запросу ничего не найдено")
+                    );
+                  }
+                }
+              }
+            );
+            break;
+
+          default:
+            res.writeHead(400);
+            res.end(JSON.stringify("Что-то пошло не так"));
+            console.log(req);
+            break;
+        }
+      } else {
+        // Для получения всех задач всех пользователей
+        if (req.method == "GET") {
+          db.all(
+            "SELECT rowid AS id, name, description, date, state, owner FROM todo",
             (err, row) => {
               if (err) {
-                res.writeHead(401);
+                res.writeHead(400);
                 res.end(JSON.stringify(err));
               } else {
-                if (row) {
-                  res.writeHead(200);
-                  res.end(JSON.stringify(row));
-                } else {
-                  res.writeHead(404);
-                  res.end(
-                    JSON.stringify("По Вашему запросу ничего не найдено")
-                  );
-                }
+                res.writeHead(200);
+                res.end(JSON.stringify(row));
               }
             }
           );
         } else {
           res.writeHead(400);
-          res.end(JSON.stringify("Неверный метод"));
+          res.end(JSON.stringify("Что-то пошло не так"));
+        }
+      }
+      break;
+
+    //   Пометить задачу как выполненную
+    case "/do":
+      if (params) {
+        switch (req.method) {
+          case "OPTIONS":
+            res.writeHead(200);
+            res.end(JSON.stringify("Продолжай"));
+            break;
+          case "PUT":
+            db.get(
+              "UPDATE todo SET state=$state WHERE rowid=$id RETURNING rowid as id, name, description, state, date, owner",
+              { $id: params.id, $state: 1 },
+              (err, row) => {
+                if (err) {
+                  res.writeHead(401);
+                  res.end(JSON.stringify(err));
+                } else {
+                  if (row) {
+                    res.writeHead(200);
+                    res.end(JSON.stringify(row));
+                  } else {
+                    res.writeHead(404);
+                    res.end(
+                      JSON.stringify("По Вашему запросу ничего не найдено")
+                    );
+                  }
+                }
+              }
+            );
+            break;
+          default:
+            res.writeHead(501);
+            res.end(JSON.stringify("Неверный метод"));
+            break;
         }
       } else {
-        res.writeHead(400);
+        res.writeHead(500);
         res.end(JSON.stringify("Запрос без параметров"));
       }
       break;
@@ -219,33 +296,40 @@ const requestListener = function (req, res) {
     //   Пометить задачу как невыполненную
     case "/undo":
       if (params) {
-        if (req.method == "PUT") {
-          db.get(
-            "UPDATE todo SET state=$state WHERE rowid=$id RETURNING rowid as id, name, description, state, date, owner",
-            { $id: params.id, $state: 0 },
-            (err, row) => {
-              if (err) {
-                res.writeHead(401);
-                res.end(JSON.stringify(err));
-              } else {
-                if (row) {
-                  res.writeHead(200);
-                  res.end(JSON.stringify(row));
+        switch (req.method) {
+          case "OPTIONS":
+            res.writeHead(200);
+            res.end(JSON.stringify("Продолжай"));
+            break;
+          case "PUT":
+            db.get(
+              "UPDATE todo SET state=$state WHERE rowid=$id RETURNING rowid as id, name, description, state, date, owner",
+              { $id: params.id, $state: 0 },
+              (err, row) => {
+                if (err) {
+                  res.writeHead(401);
+                  res.end(JSON.stringify(err));
                 } else {
-                  res.writeHead(404);
-                  res.end(
-                    JSON.stringify("По Вашему запросу ничего не найдено")
-                  );
+                  if (row) {
+                    res.writeHead(200);
+                    res.end(JSON.stringify(row));
+                  } else {
+                    res.writeHead(404);
+                    res.end(
+                      JSON.stringify("По Вашему запросу ничего не найдено")
+                    );
+                  }
                 }
               }
-            }
-          );
-        } else {
-          res.writeHead(400);
-          res.end(JSON.stringify("Неверный метод"));
+            );
+            break;
+          default:
+            res.writeHead(501);
+            res.end(JSON.stringify("Неверный метод"));
+            break;
         }
       } else {
-        res.writeHead(400);
+        res.writeHead(500);
         res.end(JSON.stringify("Запрос без параметров"));
       }
       break;
